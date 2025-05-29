@@ -1,21 +1,18 @@
-import cv2
-from imutils import face_utils
+from multiprocessing import Process, Queue
+from keyboard import keyboard
+from gray_img import blink
 
-cam = cv2.VideoCapture(0)
+if __name__ == '__main__':
+    # Queue for inter-process communication
+    blink_queue = Queue()
 
-# Get the default frame width and height
-frame_width = int(cam.get(cv2.CAP_PROP_FRAME_WIDTH))
-frame_height = int(cam.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    # Start the keyboard process
+    keyboard_process = Process(target=keyboard, args=(blink_queue,))
+    keyboard_process.start()
 
-# Define the codec and create VideoWriter object
+    # Start the blink detection process
+    blink_process = Process(target=blink, args=(blink_queue,))
+    blink_process.start()
 
-while True:
-    ret, frame = cam.read()
-    # Display the captured frame
-    cv2.imshow('Camera', frame)
-    (L_start, L_end) = face_utils.FACIAL_LANDMARKS_IDXS["left_eye"]
-    (R_start, R_end) = face_utils.FACIAL_LANDMARKS_IDXS['right_eye']
-    # Press 'q' to exit the loop
-    if cv2.waitKey(1) == ord('q'):
-        break
-cv2.destroyAllWindows
+    keyboard_process.join()
+    blink_process.join()

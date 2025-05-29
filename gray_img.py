@@ -1,7 +1,8 @@
 import cv2
 import mediapipe as mp
 from calculate import eye_aspect_ratio
-def blink():
+import time
+def blink(blink_queue):
     mp_face_mesh = mp.solutions.face_mesh
     face_mesh = mp_face_mesh.FaceMesh(static_image_mode=False, max_num_faces=1)
 
@@ -36,12 +37,9 @@ def blink():
                     cv2.circle(frame, (x, y), 2, (0, 255, 0), -1)
 
                     # Blink detection
-                if ear < 0.22:
-                    cv2.putText(frame, "BLINK", (30, 100), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 3)
-                    return (1)
-                    
-                else:
-                    return(0)
+                if ear < 0.20:
+                    blink_queue.put("BLINK")
+                    time.sleep(1)
         cv2.imshow('Camera', frame)
         # Press 'q' to exit the loop
         if cv2.waitKey(1) == ord('q'):
