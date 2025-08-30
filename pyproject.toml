@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "cmake>=4.0.2",
+    "flet[all]==0.28.3",
     "imutils>=0.5.4",
     "mediapipe>=0.10.21",
     "numpy>=1.26.4",

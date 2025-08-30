@@ -1,81 +1,201 @@
-import pygame
+import flet as ft
+import threading
 import time
-pygame.init()
 
-# Screen settings
-def keyboard(blink_queue):
-    WIDTH, HEIGHT = 800, 300
-    screen = pygame.display.set_mode((WIDTH, HEIGHT))
-    pygame.display.set_caption("Keyboard")
-    WHITE = (255, 255, 255)
-    GRAY = (180, 180, 180)
-    BLUE = (100, 100, 255)
-    BLACK = (0, 0, 0)
+class BlinkKeyboardApp:
+    def __init__(self, page: ft.Page, blink_queue):
+        self.page = page
+        self.blink_queue = blink_queue
 
-    font = pygame.font.Font(None, 36)
-    count =0
+        self.keyboard_rows = [
+            list("QWERTYUIOP"),
+            list("ASDFGHJKL"),
+            list("ZXCVBNM") + ["SPACE", "BACKSPACE"]
+        ]
+        self.current_row = 0
+        self.current_col = 0
+        self.key_buttons = []
 
-    key_width = 60
-    key_height = 60
-    key_margin = 10
-    start_x = 50
-    start_y = 50
+        self.output = ft.TextField(
+            label="Typed Text",
+            value="",
+            read_only=True,
+            width=500,
+            multiline=True,
+            min_lines=2,
+            max_lines=4,
+            border_radius=8,
+            border_color="#444444",
+            focused_border_color="#9500ff",
+            bgcolor="#0d0d0d",
+            color="white",
+            cursor_color="#9500ff",
+            hint_text="Type here...",
+            hint_style=ft.TextStyle(color="#bbbbbb"))
+        
+        self.display = ft.Container(
+            content=ft.Text(
+            value="",
+            size=16,
+            color="white",
+            weight="bold",
+            text_align="center",
+            ),
+            width=200,
+            bgcolor="#00000080",
+            border_radius=8,
+            padding=10,
+            visible=True
+        )
+        
+        self.camera_image = ft.Image(
+            src_base64="",
+            width=400,
+            height=300,
+            fit=ft.ImageFit.CONTAIN,
+            border_radius=10,)
 
-    keys = [
-        ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
-        ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L'],
-        ['Z', 'X', 'C', 'V', 'B', 'N', 'M']
-    ] 
+        self.pause_highlight = threading.Event()
 
-    blink_index = 0
-    blink_time = 800  # ms
-    last_blink = pygame.time.get_ticks()
-    print ("las",last_blink)
+        self.build_ui()
+        self.page.update()
 
-    running = True
-    while running:
-        screen.fill(WHITE)
+        threading.Thread(target=self.listen_blink_queue, daemon=True).start()
+        threading.Thread(target=self.blink_loop, daemon=True).start()
 
-        # Draw keys
-        key_rects = []
-        for row_index, row in enumerate(keys):
-            for col_index, key in enumerate(row):
-                x = start_x + col_index * (key_width + key_margin)
-                y = start_y + row_index * (key_height + key_margin)
-                rect = pygame.Rect(x, y, key_width, key_height)
-                if count == blink_index:
-                    Letter = key
-                    pygame.draw.rect(screen, BLUE, rect)
-                else:
-                    pygame.draw.rect(screen, GRAY, rect)
-                text = font.render(key, True, BLACK)
-                count=count+1
-                
-                screen.blit(text, (x + 20, y + 15))
-                key_rects.append((rect, key))
-        count=0
-        # Event handling
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
+    def build_ui(self):
+        layout = []
+        for row in self.keyboard_rows:
+            row_buttons = []
+            for key in row:
+                btn = ft.ElevatedButton(
+                    text=key,
+                    bgcolor="#D3D3D3",
+                    # on_click=self.on_key_press,
+                    width=80 if key in ["SPACE", "BACKSPACE"] else 50,
+                    style=ft.ButtonStyle(
+                        shape=ft.RoundedRectangleBorder(radius=8),
+                        elevation={"": 2, "hovered": 6},
+                    ),
+                    on_click=self.on_key_press
+                )
+                row_buttons.append(btn)
+                self.key_buttons.append(btn)
+            layout.append(ft.Row(row_buttons, alignment=ft.MainAxisAlignment.CENTER))
 
-            elif event.type == pygame.MOUSEBUTTONDOWN:
-                pos = pygame.mouse.get_pos()
-                for rect, key in key_rects:
-                    if rect.collidepoint(pos):
-                        print(f"Key pressed: {key}")
+        self.page.controls.append(
+        ft.Container(
+        content=ft.Row([
+            ft.Column([
+                ft.Text("Live Camera Feed", size=20),
+                self.camera_image,
+                self.display,
+            ], expand=1, alignment=ft.MainAxisAlignment.START, spacing=15),
 
-        current_time = pygame.time.get_ticks()
-        if current_time - last_blink > blink_time:
-            blink_index = (blink_index + 1) % 26
-            last_blink = current_time
+            ft.Column([
+                ft.Text("Blink Keyboard", size=24),
+                self.output,
+                *layout
+            ], expand=2, alignment=ft.MainAxisAlignment.START, spacing=20)
+        ], spacing=30),
+        expand=True,                          # fill entire window
+        padding=20,
+        image=ft.DecorationImage(
+            src="background.png",   # <-- put your violet/black background file path here
+            fit=ft.ImageFit.COVER 
+                )         # COVER = full screen, CONTAIN = fit inside
+    )
+)
 
-        if not blink_queue.empty():
-            msg = blink_queue.get()
-            if msg == "BLINK":
-                selected_key = Letter
-                print(selected_key,end="")    
-                time.sleep(1)
-        pygame.display.flip()
+    def on_key_press(self, e):
+        key = e.control.text
+        self.handle_key_input(key)
 
-    pygame.quit()
+    def handle_key_input(self, key):
+        if key == "SPACE":
+            self.output.value += " "
+        elif key == "BACKSPACE":
+            self.output.value = self.output.value[:-1]
+        else:
+            self.output.value += key
+        time.sleep(1.0)
+        self.page.update()
+
+    def blink_loop(self):
+        while True:
+            if not self.pause_highlight.is_set():
+                self.current_col += 1
+                if self.current_col >= len(self.keyboard_rows[self.current_row]):
+                    self.current_col = 0  # Wrap to beginning of same row
+                self.update_highlight()
+                time.sleep(1.0)
+
+    def update_highlight(self):
+        # Reset all buttons
+        for btn in self.key_buttons:
+            btn.bgcolor = "#D3D3D3"
+            btn.color = "#000000"
+            btn.style = ft.ButtonStyle(
+                elevation={"": 2}
+            )
+
+        try:
+            btn_index = sum(len(row) for row in self.keyboard_rows[:self.current_row]) + self.current_col
+            btn = self.key_buttons[btn_index]
+            btn.bgcolor = "#9500FF"
+            btn.color = "#FFFFFF"
+            btn.style = ft.ButtonStyle(
+                elevation={"": 8},
+                shadow_color={"": "#460080"}
+            )
+        except IndexError:
+            pass
+
+        self.page.update()
+
+    def listen_blink_queue(self):
+        while True:
+            if not self.blink_queue.empty():
+                msg = self.blink_queue.get()
+
+                if msg == "LEFT":
+                    self.current_row = (self.current_row + 1) % len(self.keyboard_rows)
+                    self.current_col = 0
+                    self.display.content.value = "Right blink detected"
+                    self.pause_highlight.set()
+                    self.page.update()
+                    time.sleep(2.2)
+                    self.pause_highlight.clear()
+                    self.display.content.value = ""
+
+
+                # elif msg == "RIGHT":
+                #     self.current_row = 0
+                #     self.current_col = 0
+                #     self.display.value = "Right blink detected"
+                #     self.pause_highlight.set()
+                #     self.page.update()
+                #     time.sleep(2.2)
+                #     self.pause_highlight.clear()
+                #     self.display.value = ""
+
+
+                elif msg == "BLINK":
+                    try:
+                        key = self.keyboard_rows[self.current_row][self.current_col]
+                        self.handle_key_input(key)
+                    except IndexError:
+                        pass
+
+                    self.display.content.value = "Blink detected"
+                    self.pause_highlight.set()
+                    self.page.update()
+                    time.sleep(1.2)
+                    self.pause_highlight.clear()
+                    self.display.content.value = ""
+
+                self.update_highlight()
+
+    def update_camera_image(self, img_base64):
+        self.camera_image.src_base64 = img_base64
+        self.page.update()

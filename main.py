@@ -1,18 +1,19 @@
-from multiprocessing import Process, Queue
-from keyboard import keyboard
+import flet as ft
+import threading
+import queue
+from keyboard import BlinkKeyboardApp
 from gray_img import blink
 
-if __name__ == '__main__':
-    # Queue for inter-process communication
-    blink_queue = Queue()
+blink_queue = queue.Queue()
 
-    # Start the keyboard process
-    keyboard_process = Process(target=keyboard, args=(blink_queue,))
-    keyboard_process.start()
+def main(page: ft.Page):
+    app = BlinkKeyboardApp(page, blink_queue)
 
-    # Start the blink detection process
-    blink_process = Process(target=blink, args=(blink_queue,))
-    blink_process.start()
+    # Start blink detection + send frames to Flet
+    threading.Thread(
+        target=blink,
+        args=(blink_queue, app.update_camera_image),
+        daemon=True
+    ).start()
 
-    keyboard_process.join()
-    blink_process.join()
+ft.app(target=main)
